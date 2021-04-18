@@ -9,8 +9,8 @@ from rasterio.warp import calculate_default_transform, reproject, Resampling
 #Image metadata
 IMAGE_HEIGHT = 3600
 #IMAGE_WIDTH = 'VARIABLE'
-#Projection = EPSG:4326 - WGS 84
-
+INPUT_PROJECTION = 'EPSG:4326' # (WGS 84)
+OUTPUT_PROJECTION = 'EPSG:3857' # (Web Mercator)
 
 def get_pixel_width(latitude):
     #Specs from https://www.eorc.jaxa.jp/ALOS/en/aw3d30/aw3d30v3.2_product_e_e1.2.pdf
@@ -22,6 +22,14 @@ def get_pixel_width(latitude):
         return 1800
     #default
     return IMAGE_HEIGHT
+    
+def get_target_pixel_dimensions(latitude,longitude):
+    right_longitude = (((longitude+180)+1)%360)-180
+    bounds = (longitude, latitude, right_longitude, latitude+1)
+    transform, width, height = calculate_default_transform(
+        INPUT_PROJECTION, OUTPUT_PROJECTION, get_pixel_width(latitude), IMAGE_HEIGHT, *bounds)
+        
+    return width, height
 
 def get_neighbours(latitude, longitude):
     
@@ -115,9 +123,9 @@ def get_placeholder(latitude,target_width):
     return np.zeros((scaled_height,scaled_width))
     
 def get_mercator_projected_image(path):
-    with rasterio.open(src_path) as src:
+    with rasterio.open(path) as src:
         transform, width, height = calculate_default_transform(
-            src.crs, dst_crs, src.width, src.height, *src.bounds)
+            src.crs, OUTPUT_PROJECTION, src.width, src.height, *src.bounds)
 
         destination = np.zeros((height,width), np.float32)
 
@@ -127,24 +135,24 @@ def get_mercator_projected_image(path):
             src_transform=src.transform,
             src_crs=src.crs,
             dst_transform=transform,
-            dst_crs=dst_crs,
+            dst_crs=OUTPUT_PROJECTION,
             resampling=Resampling.nearest)
 
     return destination
     
-def get_current_image(path, tile_pos, edge_length, patch_dimensions, latitude):
+def get_current_image(path, tile_pos, edge_length,patch_dimensions, latitude, longitude):
 
     if tile_pos == (1,1):
-        image = Image.open(path)
-        return np.asarray(image).astype('float')
+        image = get_mercator_projected_image(path)
+        return image
         
-    patch_pixel_width = get_pixel_width(latitude)
+    target_width, target_height = get_target_pixel_dimensions(latitude,longitude)
     
-    top_bottom_height = int((edge_length/patch_dimensions[0])*IMAGE_HEIGHT)
-    top_bottom_width = patch_pixel_width
+    top_bottom_height = int((edge_length/patch_dimensions[0])*target_height)
+    top_bottom_width = target_width
     
-    left_right_height = IMAGE_HEIGHT
-    left_right_width = int((edge_length/patch_dimensions[1])*patch_pixel_width)
+    left_right_height = target_height
+    left_right_width = int((edge_length/patch_dimensions[1])*target_width)
     
     use_placeholder = not os.path.exists(path)
     
@@ -152,9 +160,9 @@ def get_current_image(path, tile_pos, edge_length, patch_dimensions, latitude):
     current_height = 0
     
     crop_top = 0
-    crop_bottom = IMAGE_HEIGHT
+    crop_bottom = target_height
     crop_left = 0
-    crop_right = patch_pixel_width
+    crop_right = target_width
     
 
     if tile_pos[1] == 0 or tile_pos[1] == 2:
@@ -180,7 +188,7 @@ def get_current_image(path, tile_pos, edge_length, patch_dimensions, latitude):
             
         if tile_pos[0] == 1:
             #Center
-            current_width = patch_pixel_width
+            current_width = target_width
     
     if tile_pos[1] == 1:
         current_width = left_right_width
@@ -196,10 +204,10 @@ def get_current_image(path, tile_pos, edge_length, patch_dimensions, latitude):
         
     if use_placeholder == False:
         print(path)
-        image = Image.open(path)
-        crop_box = (crop_left,crop_top,crop_right,crop_bottom)
-        image = image.crop(crop_box)
-        return np.asarray(image).astype('float')
+        image_array = get_mercator_projected_image(path)
+
+        cropped = image_array[crop_top:crop_bottom, crop_left:crop_right]
+        return cropped
         
     else:
         print('Load Placeholder')
@@ -217,7 +225,7 @@ def get_row(path_to_dataset,row,radius,patch_dimensions, patches):
 
         path = os.path.join(path_to_dataset, folder_name, file_name)
         
-        image  = get_current_image(path, (i, row), radius, patch_dimensions, lat)
+        image  = get_current_image(path, (i, row), radius, patch_dimensions, lat, lon)
             
     
         if image_row is None:
@@ -227,36 +235,17 @@ def get_row(path_to_dataset,row,radius,patch_dimensions, patches):
             
     return image_row
     
-def scale_row(row, latitude, mercator=False, target_width=None):
+def scale_row(row, target_width=None):
 
     row_image = Image.fromarray(np.uint8(row * 255), 'L')
-    original_width, original_height = row_image.size
-    
-    patch_dimensions = get_patch_dimensions(latitude)
-    
-    print(patch_dimensions)
-    
-    longitude_distance_in_km = patch_dimensions[1]
-    latitude_distance_in_km = patch_dimensions[0]
-    
-    resize_width = original_width
-    resize_height = original_height
-    
-    resize_factor = 1.0
-    
+    width, height = row_image.size
+
     if target_width is not None:
-        resize_factor = float(target_width)/original_width
-        resize_width = target_width
-        resize_height = int(resize_factor*original_height)
+        factor = float(target_width)/width
+        width = target_width
+        height = int(factor*height)
     
-    vertical_scale_factor = 1.0
-    
-    if mercator:
-        vertical_scale_factor = (latitude_distance_in_km/(IMAGE_HEIGHT*resize_factor)) / (longitude_distance_in_km/resize_width)
-        
-    print(vertical_scale_factor)
-    
-    scaled_image = row_image.resize([resize_width,int(resize_height*vertical_scale_factor)],Image.ANTIALIAS)
+    scaled_image = row_image.resize([width,height],Image.ANTIALIAS)
     return scaled_image
     
     
@@ -279,7 +268,7 @@ def get_image_(path_to_dataset, latitude,longitude, radius=10):
     current_row = None
     rows = None
 
-    target_width = get_pixel_width(latitude)
+    target_width, target_height = get_target_pixel_dimensions(latitude,longitude)
     
     top_latitude = patch_list[0][0]
     middle_latitude = patch_list[3][0]
@@ -299,9 +288,9 @@ def get_image_(path_to_dataset, latitude,longitude, radius=10):
     bottom_row = (bottom_row - min_height) / (max_height-min_height)
     
     #Mercator projection
-    middle_row_image = scale_row(middle_row,middle_latitude,mercator=True)
-    top_row_image = scale_row(top_row,top_latitude,mercator=True,target_width=middle_row.shape[1])
-    bottom_row_image = scale_row(bottom_row,bottom_latitude,mercator=True,target_width=middle_row.shape[1])
+    middle_row_image = scale_row(middle_row)
+    top_row_image = scale_row(top_row,target_width=middle_row_image.size[0])
+    bottom_row_image = scale_row(bottom_row,target_width=middle_row_image.size[0])
     
     top_margin = top_row_image.size[1]
     bottom_margin = bottom_row_image.size[1]

@@ -11,7 +11,7 @@ import numpy as np
 
 PATH_TO_DATASET = '/Volumes/Extreme SSD/Datasets/Terrain/'
 
-lat = 48
+lat = 59
 lon = 8
 
 COMPARE = False
@@ -31,17 +31,17 @@ if COMPARE:
     
     image.save("old.png","PNG")
 
-    start = time.time()
-    result = get_image_(PATH_TO_DATASET, lat, lon, 10)
-    end = time.time()
-    print(end-start)
+start = time.time()
+result = get_image_(PATH_TO_DATASET, lat, lon, 10)
+end = time.time()
+print(end-start)
 
-    image = result[2]
-    box = result[1]
-    draw = ImageDraw.Draw(image)
-    draw.rectangle(box, outline=255, width=3)
-    print(image.size)
-    image.show()
+image = result[2]
+box = result[1]
+draw = ImageDraw.Draw(image)
+draw.rectangle(box, outline=255, width=3)
+print(image.size)
+image.show()
 
 dst_crs = 'EPSG:3857'#'EPSG:4326'
 
@@ -55,6 +55,7 @@ dst_path = '/Users/joshua/Desktop/' + file_name +'_Projected.png'
 with rasterio.open(src_path) as src:
     transform, width, height = calculate_default_transform(
         src.crs, dst_crs, src.width, src.height, *src.bounds)
+        
 
     destination = np.zeros((height,width), np.float32)
 
