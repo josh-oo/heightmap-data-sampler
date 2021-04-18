@@ -20,10 +20,11 @@ def sample_random_points(latitude, longitude, amount_samples, edge_length, outpu
         
     file_prefix = stringify_latitude(latitude) + '_' + stringify_longitude(longitude)
         
-    output_dir = os.path.join(output_dir, file_prefix)
-        
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    current_output_dir = os.path.join(output_dir, file_prefix)
+    
+    if not os.path.exists(current_output_dir):
+        os.makedirs(current_output_dir)
+    
         
     new_image = result[2]
     bounding_box = result[1]
@@ -76,7 +77,7 @@ def sample_random_points(latitude, longitude, amount_samples, edge_length, outpu
         if output_size is not None:
             image_slice = image_slice.resize([output_size,output_size],Image.ANTIALIAS)
         
-        image_slice.save(os.path.join(output_dir,file_name),"PNG")
+        image_slice.save(os.path.join(current_output_dir,file_name),"PNG")
         point_id += 1
         
         if DEBUG:
@@ -126,6 +127,9 @@ def get_patch_list():
 
 def run_sampler(output_size,output_dir,samples_per_patch, sample_edge_length):
     
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        
     #Reset labels
     with open(os.path.join(output_dir,'labels.csv'), 'a') as file:
         file.truncate(0)
@@ -145,7 +149,9 @@ def run_sampler(output_size,output_dir,samples_per_patch, sample_edge_length):
         
         end = time.time()
         
-        print('\n' + str(current_patch) + '/' + str(patch_size) + ' - ' + str(int(end - start))+ 's \n')
+        avg_time = (end - start)/current_patch
+        
+        print('\n' + str(current_patch) + '/' + str(patch_size) + ' - ' + str(int(end - start))+ 's '+ 'avg: '+ str(avg_time)+ 's \n')
         
         current_patch += 1
     
