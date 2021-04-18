@@ -1,35 +1,12 @@
 from PIL import Image
 import numpy as np
 import os
-from utilities import stringify_latitude, stringify_longitude, get_patch_dimensions
+import utilities
+from utilities import stringify_latitude, stringify_longitude
+from utilities import get_patch_dimensions, get_pixel_width, get_target_pixel_dimensions
 
 import rasterio
 from rasterio.warp import calculate_default_transform, reproject, Resampling
-
-#Image metadata
-IMAGE_HEIGHT = 3600
-#IMAGE_WIDTH = 'VARIABLE'
-INPUT_PROJECTION = 'EPSG:4326' # (WGS 84)
-OUTPUT_PROJECTION = 'EPSG:3857' # (Web Mercator)
-
-def get_pixel_width(latitude):
-    #Specs from https://www.eorc.jaxa.jp/ALOS/en/aw3d30/aw3d30v3.2_product_e_e1.2.pdf
-    if latitude >= 80 or latitude <= -80:
-        return 600
-    if latitude >= 70 or latitude <= -70:
-        return 1200
-    if latitude >= 60 or latitude <= -60:
-        return 1800
-    #default
-    return IMAGE_HEIGHT
-    
-def get_target_pixel_dimensions(latitude,longitude):
-    right_longitude = (((longitude+180)+1)%360)-180
-    bounds = (longitude, latitude, right_longitude, latitude+1)
-    transform, width, height = calculate_default_transform(
-        INPUT_PROJECTION, OUTPUT_PROJECTION, get_pixel_width(latitude), IMAGE_HEIGHT, *bounds)
-        
-    return width, height
 
 def get_neighbours(latitude, longitude):
     
@@ -125,7 +102,7 @@ def get_placeholder(latitude,target_width):
 def get_mercator_projected_image(path):
     with rasterio.open(path) as src:
         transform, width, height = calculate_default_transform(
-            src.crs, OUTPUT_PROJECTION, src.width, src.height, *src.bounds)
+            src.crs, utilities.OUTPUT_PROJECTION, src.width, src.height, *src.bounds)
 
         destination = np.zeros((height,width), np.float32)
 
@@ -135,7 +112,7 @@ def get_mercator_projected_image(path):
             src_transform=src.transform,
             src_crs=src.crs,
             dst_transform=transform,
-            dst_crs=OUTPUT_PROJECTION,
+            dst_crs=utilities.OUTPUT_PROJECTION,
             resampling=Resampling.nearest)
 
     return destination

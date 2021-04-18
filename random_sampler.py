@@ -4,12 +4,13 @@ import numpy as np
 from math import sqrt
 import random
 import os
-from utilities import stringify_latitude, stringify_longitude, get_patch_dimensions, string_to_position
+from utilities import stringify_latitude, stringify_longitude, get_patch_dimensions, string_to_position, pixel_to_coordinates
 from uniform_density import Field, halton
 import time
 
 PATH_TO_DATASET = '/Volumes/Extreme SSD/Datasets/Terrain/'
-DEBUG = False
+DEBUG = True
+
 
 def sample_random_points(latitude, longitude, amount_samples, edge_length, output_dir=None,output_size=None):
     
@@ -38,24 +39,28 @@ def sample_random_points(latitude, longitude, amount_samples, edge_length, outpu
     draw = ImageDraw.Draw(new_image)
     line_color = 255
     
+    #TODO Check
     edge_length_pixel = edge_length_latitude * content_height
     radius_pixel = edge_length_pixel * 1.41421356237 #edge_length * sqrt(2)
     
     points = equal_distribution(latitude, amount_samples)
     
+    points_pixel = np.multiply(points, np.array([content_width,content_height]).T)
     
-    point_id = 0
-    for x,y in points:
+    points_lat_lon = pixel_to_coordinates(latitude,longitude, points_pixel)
+    
+    for point_id, (x,y) in enumerate(points_pixel):
     
         file_name = file_prefix+'_'+str(point_id) + ".png"
     
         with open(os.path.join(output_dir,'labels.csv'), 'a') as file:
-            current_lat = str(latitude + x)
-            current_lon = str(longitude + y)
-            file.write(file_name + ';'+current_lat+';'+ current_lon+'\n')
+            #TODO save min max height information
+            current_lat = str(points_lat_lon[point_id][0])
+            current_lon = str(points_lat_lon[point_id][1])
+            file.write(os.path.join(file_prefix,file_name) + ';'+current_lat+';'+ current_lon+'\n')
     
-        point1 = (x*content_width - radius_pixel/2,y*content_height-radius_pixel/2)
-        point2 = (x*content_width + radius_pixel/2,y*content_height+radius_pixel/2)
+        point1 = (x - radius_pixel/2,y-radius_pixel/2)
+        point2 = (x + radius_pixel/2,y+radius_pixel/2)
         
         margin = (bounding_box[0][0],bounding_box[0][1])
         
@@ -78,7 +83,6 @@ def sample_random_points(latitude, longitude, amount_samples, edge_length, outpu
             image_slice = image_slice.resize([output_size,output_size],Image.ANTIALIAS)
         
         image_slice.save(os.path.join(current_output_dir,file_name),"PNG")
-        point_id += 1
         
         if DEBUG:
             draw.ellipse([point1,point2], outline=line_color, width=2)
@@ -86,7 +90,6 @@ def sample_random_points(latitude, longitude, amount_samples, edge_length, outpu
     if DEBUG:
         draw.rectangle(bounding_box, outline=line_color, width=3)
         new_image.show()
-        new_image.save("merged_image.png","PNG")
     
 def equal_distribution(latitude, points):
 
@@ -155,7 +158,8 @@ def run_sampler(output_size,output_dir,samples_per_patch, sample_edge_length):
         
         current_patch += 1
     
-run_sampler(output_size=256,output_dir='../samples', samples_per_patch=150, sample_edge_length=10)
+#run_sampler(output_size=256,output_dir='../samples', samples_per_patch=150, sample_edge_length=10)
+sample_random_points(59, 8, 150, 10, output_dir='../samples',output_size=256)
     
     
 

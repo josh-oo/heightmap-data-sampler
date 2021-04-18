@@ -1,4 +1,31 @@
+import rasterio
+import numpy as np
+from rasterio.warp import calculate_default_transform
 from math import sin, cos, sqrt, atan2, radians
+
+IMAGE_HEIGHT = 3600
+
+INPUT_PROJECTION = 'EPSG:4326' # (WGS 84)
+OUTPUT_PROJECTION = 'EPSG:3857' # (Web Mercator)
+    
+def get_target_pixel_dimensions(latitude,longitude):
+    right_longitude = (((longitude+180)+1)%360)-180
+    bounds = (longitude, latitude, right_longitude, latitude+1)
+    transform, width, height = calculate_default_transform(
+        INPUT_PROJECTION, OUTPUT_PROJECTION, get_pixel_width(latitude), IMAGE_HEIGHT, *bounds)
+        
+    return width, height
+
+def get_pixel_width(latitude):
+    #Specs from https://www.eorc.jaxa.jp/ALOS/en/aw3d30/aw3d30v3.2_product_e_e1.2.pdf
+    if latitude >= 80 or latitude <= -80:
+        return 600
+    if latitude >= 70 or latitude <= -70:
+        return 1200
+    if latitude >= 60 or latitude <= -60:
+        return 1800
+    #default
+    return IMAGE_HEIGHT
 
 def stringify_latitude(latitude):
 
@@ -83,3 +110,20 @@ def calculate_distance(first_point,second_point):
     distance = R * c
     
     return distance
+
+def pixel_to_coordinates(latitude,longitude, points):
+
+    right_longitude = (((longitude+180)+1)%360)-180
+    bounds = (longitude, latitude, right_longitude, latitude+1)
+    
+    transform, width, height = calculate_default_transform(
+        INPUT_PROJECTION, OUTPUT_PROJECTION, get_pixel_width(latitude), 3600, *bounds)
+    
+    y = points[:,0]
+    x = points[:,1]
+    
+    mercator_pos = rasterio.transform.xy(transform, x, y, offset='ul')
+    
+    lat_lon = rasterio.warp.transform(OUTPUT_PROJECTION, INPUT_PROJECTION, mercator_pos[0],  mercator_pos[1])
+    
+    return np.stack((lat_lon[1], lat_lon[0]), axis = 1)
