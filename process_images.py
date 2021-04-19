@@ -3,7 +3,7 @@ import numpy as np
 import os
 import utilities
 from utilities import stringify_latitude, stringify_longitude
-from utilities import get_patch_dimensions, get_pixel_width, get_target_pixel_dimensions
+from utilities import get_pixel_width, get_target_pixel_dimensions
 
 import rasterio
 from rasterio.warp import calculate_default_transform, reproject, Resampling
@@ -94,7 +94,7 @@ def get_placeholder(latitude,target_width):
     actual_width = get_pixel_width(latitude)
     scale_factor = float(target_width) / float(actual_width)
     scaled_width = int(actual_width*scale_factor)
-    scaled_height = int(3600*scale_factor)
+    scaled_height = int(utilities.IMAGE_HEIGHT*scale_factor)
 
     #swap width and height to match pillow
     return np.zeros((scaled_height,scaled_width))
@@ -117,19 +117,17 @@ def get_mercator_projected_image(path):
 
     return destination
     
-def get_current_image(path, tile_pos, edge_length,patch_dimensions, latitude, longitude):
+def get_current_image(path, tile_pos, offset, width, height):
 
-    if tile_pos == (1,1):
-        image = get_mercator_projected_image(path)
-        return image
+    if tile_pos == (1,1): return get_mercator_projected_image(path)
         
-    target_width, target_height = get_target_pixel_dimensions(latitude,longitude)
+    #target_width, target_height = get_target_pixel_dimensions(latitude,longitude)
     
-    top_bottom_height = int((edge_length/patch_dimensions[0])*target_height)
-    top_bottom_width = target_width
+    top_bottom_height = offset#int((edge_length/patch_dimensions[0])*target_height)
+    top_bottom_width = width
     
-    left_right_height = target_height
-    left_right_width = int((edge_length/patch_dimensions[1])*target_width)
+    left_right_height = height
+    left_right_width = offset#int((edge_length/patch_dimensions[1])*target_width)
     
     use_placeholder = not os.path.exists(path)
     
@@ -137,9 +135,9 @@ def get_current_image(path, tile_pos, edge_length,patch_dimensions, latitude, lo
     current_height = 0
     
     crop_top = 0
-    crop_bottom = target_height
+    crop_bottom = height
     crop_left = 0
-    crop_right = target_width
+    crop_right = width
     
 
     if tile_pos[1] == 0 or tile_pos[1] == 2:
@@ -165,7 +163,7 @@ def get_current_image(path, tile_pos, edge_length,patch_dimensions, latitude, lo
             
         if tile_pos[0] == 1:
             #Center
-            current_width = target_width
+            current_width = width
     
     if tile_pos[1] == 1:
         current_width = left_right_width
@@ -191,9 +189,14 @@ def get_current_image(path, tile_pos, edge_length,patch_dimensions, latitude, lo
         return np.zeros((current_height,current_width))
         
         
-def get_row(path_to_dataset,row,radius,patch_dimensions, patches):
+def get_row(path_to_dataset,row,offset,target_width, patches):
     
     image_row = None
+    
+    row_width, row_height = get_target_pixel_dimensions(patches[0][0],patches[0][1])
+    
+    offset = int(offset*float(row_width)/target_width)
+    
 
     for i in range (len(patches)):
         lat, lon = patches[i]
@@ -202,13 +205,11 @@ def get_row(path_to_dataset,row,radius,patch_dimensions, patches):
 
         path = os.path.join(path_to_dataset, folder_name, file_name)
         
-        image  = get_current_image(path, (i, row), radius, patch_dimensions, lat, lon)
+        image  = get_current_image(path, (i, row), offset, row_width, row_height)
             
     
-        if image_row is None:
-            image_row = image
-        else:
-            image_row = np.concatenate((image_row, image), axis = 1)
+        if image_row is None: image_row = image
+        else: image_row = np.concatenate((image_row, image), axis = 1)
             
     return image_row
     
@@ -226,24 +227,15 @@ def scale_row(row, target_width=None):
     return scaled_image
     
     
-def get_image(path_to_dataset, latitude,longitude, radius=10):
+def get_image(path_to_dataset, latitude,longitude, offset=0):
 
     file_name, folder_name = get_file_paths(latitude,longitude)
     path = os.path.join(path_to_dataset, folder_name, file_name)
     
-    if not os.path.exists(path):
-        return None
+    if not os.path.exists(path): return None
 
     print('\nProcess ' + file_name)
     patch_list = get_neighbours(latitude,longitude)
-    
-    patch_dimensions = get_patch_dimensions(latitude)
-
-    col = 0
-    row = 0
-
-    current_row = None
-    rows = None
 
     target_width, target_height = get_target_pixel_dimensions(latitude,longitude)
     
@@ -252,9 +244,9 @@ def get_image(path_to_dataset, latitude,longitude, radius=10):
     bottom_latitude = patch_list[6][0]
 
     #Get rows
-    middle_row = get_row(path_to_dataset,1,radius,patch_dimensions,[patch_list[3],patch_list[4],patch_list[5]])
-    top_row = get_row(path_to_dataset,0,radius,patch_dimensions,[patch_list[0],patch_list[1],patch_list[2]])
-    bottom_row = get_row(path_to_dataset,2,radius,patch_dimensions,[patch_list[6],patch_list[7],patch_list[8]])
+    middle_row = get_row(path_to_dataset,1,offset,target_width,[patch_list[3],patch_list[4],patch_list[5]])
+    top_row = get_row(path_to_dataset,0,offset,target_width,[patch_list[0],patch_list[1],patch_list[2]])
+    bottom_row = get_row(path_to_dataset,2,offset,target_width,[patch_list[6],patch_list[7],patch_list[8]])
     
     #Normalize images
     max_height = np.max([np.max(middle_row),np.max(top_row),np.max(bottom_row)])
@@ -264,7 +256,7 @@ def get_image(path_to_dataset, latitude,longitude, radius=10):
     top_row = (top_row - min_height) / (max_height-min_height)
     bottom_row = (bottom_row - min_height) / (max_height-min_height)
     
-    #Mercator projection
+    #Scale patches
     middle_row_image = scale_row(middle_row)
     top_row_image = scale_row(top_row,target_width=middle_row_image.size[0])
     bottom_row_image = scale_row(bottom_row,target_width=middle_row_image.size[0])
@@ -274,24 +266,11 @@ def get_image(path_to_dataset, latitude,longitude, radius=10):
     
     image_height = middle_row_image.size[1]
     
-    new_image = Image.new('L', (middle_row.shape[1], top_margin+image_height+bottom_margin), 0)
+    image = Image.new('L', (middle_row.shape[1], top_margin+image_height+bottom_margin), 0)
     
-    new_image.paste(top_row_image, (0, 0))
-    new_image.paste(middle_row_image, (0, top_margin))
-    new_image.paste(bottom_row_image, (0, top_margin + image_height))
-
-    width, height = new_image.size
+    image.paste(top_row_image, (0, 0))
+    image.paste(middle_row_image, (0, top_margin))
+    image.paste(bottom_row_image, (0, top_margin + image_height))
 
 
-    longitude_distance_in_km = patch_dimensions[1]
-    latitude_distance_in_km = patch_dimensions[0]
-    
-    radius_latitude = radius / latitude_distance_in_km
-    radius_longitude = radius / longitude_distance_in_km
-
-    horizontal_margin = int((width-target_width)/2)
-    
-    content_bounding_box = [(horizontal_margin,top_margin),(width-horizontal_margin,height-bottom_margin)]
-    
-    
-    return radius_latitude, content_bounding_box, new_image
+    return image, min_height, max_height

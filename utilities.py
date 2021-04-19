@@ -1,20 +1,13 @@
 import rasterio
 import numpy as np
-from rasterio.warp import calculate_default_transform
+from rasterio.warp import calculate_default_transform, transform_bounds
 from math import sin, cos, sqrt, atan2, radians
+import geopy.distance
 
 IMAGE_HEIGHT = 3600
 
 INPUT_PROJECTION = 'EPSG:4326' # (WGS 84)
 OUTPUT_PROJECTION = 'EPSG:3857' # (Web Mercator)
-    
-def get_target_pixel_dimensions(latitude,longitude):
-    right_longitude = (((longitude+180)+1)%360)-180
-    bounds = (longitude, latitude, right_longitude, latitude+1)
-    transform, width, height = calculate_default_transform(
-        INPUT_PROJECTION, OUTPUT_PROJECTION, get_pixel_width(latitude), IMAGE_HEIGHT, *bounds)
-        
-    return width, height
 
 def get_pixel_width(latitude):
     #Specs from https://www.eorc.jaxa.jp/ALOS/en/aw3d30/aw3d30v3.2_product_e_e1.2.pdf
@@ -68,8 +61,11 @@ def string_to_position(str):
     
     return lat, lon
     
+def get_bounds(latitude, longitude):
+    right_longitude = (((longitude+180)+1)%360)-180
+    return (longitude, latitude, right_longitude, latitude+1)
     
-def get_patch_dimensions(latitude):
+'''def get_patch_dimensions(latitude):
     
     #latitude distance
     
@@ -109,12 +105,11 @@ def calculate_distance(first_point,second_point):
 
     distance = R * c
     
-    return distance
+    return distance'''
 
 def pixel_to_coordinates(latitude,longitude, points):
 
-    right_longitude = (((longitude+180)+1)%360)-180
-    bounds = (longitude, latitude, right_longitude, latitude+1)
+    bounds = get_bounds(latitude,longitude)
     
     transform, width, height = calculate_default_transform(
         INPUT_PROJECTION, OUTPUT_PROJECTION, get_pixel_width(latitude), 3600, *bounds)
@@ -127,3 +122,40 @@ def pixel_to_coordinates(latitude,longitude, points):
     lat_lon = rasterio.warp.transform(OUTPUT_PROJECTION, INPUT_PROJECTION, mercator_pos[0],  mercator_pos[1])
     
     return np.stack((lat_lon[1], lat_lon[0]), axis = 1)
+    
+    
+def get_target_pixel_dimensions(latitude,longitude):
+
+    bounds = get_bounds(latitude,longitude)
+    
+    transform, width, height = calculate_default_transform(
+        INPUT_PROJECTION, OUTPUT_PROJECTION, get_pixel_width(latitude), IMAGE_HEIGHT, *bounds)
+        
+    return width, height
+    
+def km_to_pixel(latitude,longitude, km):
+
+    bounds = get_bounds(latitude,longitude)
+    
+    biggest_latitude = latitude
+    if biggest_latitude > 0:
+        biggest_latitude += 1
+    
+    lat_distance = geopy.distance.geodesic((biggest_latitude,longitude), (latitude,longitude)).km
+    lon_distance = geopy.distance.geodesic((biggest_latitude,longitude), (biggest_latitude,bounds[2])).km
+    
+    lat_radius = km/lat_distance
+    lon_radius = km/lon_distance
+        
+    lats = [biggest_latitude-lat_radius]
+    lons = [longitude+lon_radius]
+    
+    transform, width, height = calculate_default_transform(
+    INPUT_PROJECTION, OUTPUT_PROJECTION, get_pixel_width(latitude), IMAGE_HEIGHT, *bounds)
+    
+    lat_lon = rasterio.warp.transform(INPUT_PROJECTION, OUTPUT_PROJECTION, lons,  lats)
+    
+    pixel_positions = rasterio.transform.rowcol(transform,lat_lon[0],lat_lon[1])
+    
+    
+    return int((pixel_positions[0] + pixel_positions[1])/2)
