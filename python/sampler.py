@@ -37,8 +37,6 @@ def sample_random_points(latitude, longitude,path_prefix, amount_samples, edge_l
     
     points = equal_distribution(amount_samples, placeholders, edge_length_pixel, content_width, content_height)
     
-    #points_pixel = np.multiply(points, np.array([content_width,content_height]).T)
-    
     points_lat_lon = pixel_to_coordinates(latitude,longitude, points)
     
     margin = np.array([edge_length_pixel,edge_length_pixel])
@@ -93,7 +91,6 @@ def select_points_with_distance(input_points, distance_points,min_distance):
                 break
         mask.append(min_distance_ok)
         
-    print(mask)
     return mask
     
     
@@ -230,7 +227,7 @@ output_dir = args.output
 output_size = args.size
 DEBUG = args.debug
 
-data = sample_random_points(45, 8, input_dir,amount_samples, edge_length, output_dir=output_dir,output_size=output_size)
+data = sample_random_points(53, 6, input_dir,amount_samples, edge_length, output_dir=output_dir,output_size=output_size)
 if data is not None and DEBUG: show_debug_draw(*data)
 else: print("No data")
     
