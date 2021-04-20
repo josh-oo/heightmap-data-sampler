@@ -55,7 +55,6 @@ def sample_random_points(latitude, longitude, amount_samples, edge_length, outpu
         angle = random.uniform(0, 1)*360.0
     
         with open(os.path.join(output_dir,'labels.csv'), 'a') as file:
-            #TODO save min max height information
             lat, lon  = points_lat_lon[point_id][0], points_lat_lon[point_id][1]
             path = os.path.join(file_prefix,file_name)
             
@@ -160,7 +159,9 @@ def run_sampler(output_size,output_dir,samples_per_patch, sample_edge_length):
         print(output_info)
     
 #run_sampler(output_size=256,output_dir='../samples', samples_per_patch=150, sample_edge_length=10)
-show_debug_draw(*sample_random_points(45, 8, 150, 10, output_dir='../samples',output_size=256))
+data = sample_random_points(45, 8, 150, 10, output_dir='../samples',output_size=256)
+if data is not None: show_debug_draw(*data)
+else: print("No data")
     
     
 
