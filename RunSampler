@@ -9,9 +9,6 @@ AMOUNT_SAMPLES=$1; shift;
 
 while [[ "$#" -gt 0 ]]; do
 	case $1 in
-		#-i|--input) INPUT="$2"; shift ;;
-		#-e|--edge) EDGE_LENGTH="$2"; shift ;;
-        #-a|--amount) AMOUNT_SAMPLES=$2; shift ;;
         -o|--output) OUTPUT="-o "$2""; shift ;;
         -s|--size) OUTPUT_SIZE="-s $2"; shift ;;
         -d|--debug) DEBUG="-d true" ;;
@@ -58,6 +55,6 @@ fi
 
 #echo $OUTPUT
 
-python3 python/random_sampler.py "$INPUT" $EDGE_LENGTH $AMOUNT_SAMPLES $OUTPUT $OUTPUT_SIZE $DEBUG
+python3 python/sampler.py "$INPUT" $EDGE_LENGTH $AMOUNT_SAMPLES $OUTPUT $OUTPUT_SIZE $DEBUG
 
 deactivate

@@ -1,17 +1,16 @@
-from process_images import get_image
+from image_loader import get_image
 from PIL import Image, ImageDraw
 import numpy as np
-from math import sqrt
-import random
 import os
 from utilities import stringify_latitude, stringify_longitude, string_to_position
 from utilities import pixel_to_coordinates, km_to_pixel
-from uniform_density import Field, halton
+from halton import halton
 import time
 import argparse
+import random
+import math
 
 DEBUG = True
-
 
 def sample_random_points(latitude, longitude,path_prefix, amount_samples, edge_length, output_dir=None,output_size=None):
         
@@ -22,7 +21,7 @@ def sample_random_points(latitude, longitude,path_prefix, amount_samples, edge_l
     result = get_image(path_prefix, latitude, longitude, edge_length_pixel)
     if result is None: return None
     
-    image, min_height, max_height = result
+    image, min_height, max_height, placeholders = result
         
     file_prefix = stringify_latitude(latitude) + '_' + stringify_longitude(longitude)
     current_output_dir = os.path.join(output_dir, file_prefix)
@@ -36,21 +35,18 @@ def sample_random_points(latitude, longitude,path_prefix, amount_samples, edge_l
     
     radius_pixel = edge_length_pixel * 1.41421356237 #edge_length * sqrt(2)
     
-    aspect = content_height/content_width
+    points = equal_distribution(amount_samples, placeholders, edge_length_pixel, content_width, content_height)
     
-    points = equal_distribution(amount_samples, aspect)
+    #points_pixel = np.multiply(points, np.array([content_width,content_height]).T)
     
-    points_pixel = np.multiply(points, np.array([content_width,content_height]).T)
-    
-    points_lat_lon = pixel_to_coordinates(latitude,longitude, points_pixel)
+    points_lat_lon = pixel_to_coordinates(latitude,longitude, points)
     
     margin = np.array([edge_length_pixel,edge_length_pixel])
     
     #Add Offset
-    points_pixel = np.add(points_pixel,margin)
+    points_pixel = np.add(points,margin)
     
     for point_id, (x,y) in enumerate(points_pixel):
-    
         file_name = file_prefix+'_'+str(point_id) + ".png"
         
         angle = random.uniform(0, 1)*360.0
@@ -83,8 +79,28 @@ def sample_random_points(latitude, longitude,path_prefix, amount_samples, edge_l
     bounding_box = [(edge_length_pixel,edge_length_pixel),(width-edge_length_pixel,height-edge_length_pixel)]
     return image, points_pixel, bounding_box
     
-def equal_distribution(points, aspect):
+
+def select_points_with_distance(input_points, distance_points,min_distance):
     
+    mask = []
+    
+    for input_point in input_points:
+        min_distance_ok = True
+        for distance_point in distance_points:
+            distance = math.hypot(distance_point[0] - input_point[0], distance_point[1] - input_point[1])
+            if distance < min_distance:
+                min_distance_ok= False
+                break
+        mask.append(min_distance_ok)
+        
+    print(mask)
+    return mask
+    
+    
+def equal_distribution(points, placeholders, offset, width, height):
+    
+    aspect = float(height)/width
+        
     halton_size = int(points*0.8)
     random_size = points-halton_size
     
@@ -93,15 +109,45 @@ def equal_distribution(points, aspect):
     
     points = np.concatenate((halton_points,random_points), axis=0)
     
-    scale = np.array([aspect,1.0])
-    points = np.multiply(points,scale.T)
+    points = np.multiply(points, np.array([width*aspect,height]).T)
     
-    points = points[points[:,0] <= 1.0]
+    points = points[points[:,0] <= width]
     
+    #Pay attention to parts of the image which are filled with placeholders
+    
+    points_to_keep_distance = []
+    
+    #Add top offset
+    if placeholders[0][1]: points = points[points[:,1] >= offset]
+    
+    #Add bottom offset
+    if placeholders[2][1]: points = points[points[:,1] <= height-offset]
+    
+    #Add left offset
+    if placeholders[1][0]: points = points[points[:,0] >= offset]
+    
+    #Add right offset
+    if placeholders[1][2]: points = points[points[:,0] <= width-offset]
+    
+    #Upper left
+    if not placeholders[0][1] and not placeholders[1][0] and placeholders[0][0]: points_to_keep_distance.append((0,0))
+    
+    #Upper right
+    if not placeholders[0][1] and not placeholders[1][2] and placeholders[0][2]: points_to_keep_distance.append((width,0))
+    
+    #Lower left
+    if not placeholders[2][1] and not placeholders[1][0] and placeholders[2][0]: points_to_keep_distance.append((0,height))
+    
+    #Lower left
+    if not placeholders[2][1] and not placeholders[1][2] and placeholders[2][2]: points_to_keep_distance.append((width,height))
+    
+    if len(points_to_keep_distance) > 0:
+        mask = select_points_with_distance(points, points_to_keep_distance,offset)
+        points = points[mask]
     
     return points
 
-    
+
 def get_patch_list():
     patch_list = []
     for folder in os.listdir(PATH_TO_DATASET):
@@ -111,6 +157,7 @@ def get_patch_list():
                     patch_list.append(file)
                     
     return patch_list
+    
     
 def show_debug_draw(image, points, bounding_box):
     draw = ImageDraw.Draw(image)

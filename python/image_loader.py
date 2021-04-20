@@ -2,93 +2,26 @@ from PIL import Image
 import numpy as np
 import os
 import utilities
-from utilities import stringify_latitude, stringify_longitude
-from utilities import get_pixel_width, get_target_pixel_dimensions
+from utilities import get_file_paths, get_pixel_width, get_target_pixel_dimensions
+
 
 import rasterio
 from rasterio.warp import calculate_default_transform, reproject, Resampling
-
-def get_neighbours(latitude, longitude):
     
-    neighbour_list = [(None,None)]*9
+def get_neighbours(latitude, longitude):
     
     left_longitude = (((longitude+180)-1)%360)-180
     right_longitude = (((longitude+180)+1)%360)-180
     
-    #Left
-    pos = (latitude,  left_longitude)
-    neighbour_list[3] = pos
-    
-    #Original
-    pos = (latitude,  longitude)
-    neighbour_list[4] = pos
-    
-    #Right
-    pos = (latitude,  right_longitude)
-    neighbour_list[5] = pos
+    lats, lons = [None,latitude,None],[left_longitude,longitude,right_longitude]
     
     #Top
-    if latitude + 1 <= 90:
-        top_latitude = latitude + 1
-        
-        pos = (top_latitude, longitude)
-        neighbour_list[1] = pos
-        
-        pos = (top_latitude, left_longitude)
-        neighbour_list[0] = pos
-        
-        pos = (top_latitude, right_longitude)
-        neighbour_list[2] = pos
+    if latitude + 1 <= 90: lats[0] = latitude + 1
     
     #Bottom
-    if latitude - 1 >= -90:
-        bottom_latitude = latitude - 1
-        
-        pos = (bottom_latitude, longitude)
-        neighbour_list[7] = pos
-        
-        pos = (bottom_latitude, left_longitude)
-        neighbour_list[6] = pos
-        
-        pos = (bottom_latitude, right_longitude)
-        neighbour_list[8] = pos
+    if latitude - 1 >= -90: lats[2] = latitude - 1
     
-        
-    return neighbour_list
-    
-    
-def get_file_paths(latitude,longitude):
-
-    lat_str = stringify_latitude(latitude)
-    lon_str = stringify_longitude(longitude)
-
-    file_name = 'ALPSMLC30_'+lat_str+lon_str+'_DSM.tif'
-    
-    floor_lat = int(latitude/5)*5
-    floor_lon = int(longitude/5)*5
-    
-    if latitude < 0:
-        lat_to = floor_lat - 5
-        first_lat = stringify_latitude(lat_to)
-        second_lat = stringify_latitude(floor_lat)
-    else:
-        lat_to = floor_lat + 5
-        first_lat = stringify_latitude(floor_lat)
-        second_lat = stringify_latitude(lat_to)
-    
-    
-    if longitude < 0:
-        lon_to = floor_lon - 5
-        first_lon = stringify_longitude(lon_to)
-        second_lon = stringify_longitude(floor_lon)
-    else:
-        lon_to = floor_lon + 5
-        first_lon = stringify_longitude(floor_lon)
-        second_lon = stringify_longitude(lon_to)
-    
-    folder_name = first_lat+first_lon + '_' + second_lat +second_lon
-    
-    return file_name, folder_name
+    return lats, lons
     
 def get_placeholder(latitude,target_width):
     actual_width = get_pixel_width(latitude)
@@ -119,15 +52,14 @@ def get_mercator_projected_image(path):
     
 def get_current_image(path, tile_pos, offset, width, height):
 
-    if tile_pos == (1,1): return get_mercator_projected_image(path)
+    if tile_pos == (1,1): return get_mercator_projected_image(path), False
         
-    #target_width, target_height = get_target_pixel_dimensions(latitude,longitude)
     
-    top_bottom_height = offset#int((edge_length/patch_dimensions[0])*target_height)
+    top_bottom_height = offset
     top_bottom_width = width
     
     left_right_height = height
-    left_right_width = offset#int((edge_length/patch_dimensions[1])*target_width)
+    left_right_width = offset
     
     use_placeholder = not os.path.exists(path)
     
@@ -182,36 +114,36 @@ def get_current_image(path, tile_pos, offset, width, height):
         image_array = get_mercator_projected_image(path)
 
         cropped = image_array[crop_top:crop_bottom, crop_left:crop_right]
-        return cropped
+        return cropped, False
         
     else:
         print('Load Placeholder')
-        return np.zeros((current_height,current_width))
+        return np.zeros((current_height,current_width)), True
         
         
-def get_row(path_to_dataset,row,offset,target_width, patches):
+def get_row(path_to_dataset,row,offset,target_width, lons, lat):
     
     image_row = None
     
-    row_width, row_height = get_target_pixel_dimensions(patches[0][0],patches[0][1])
+    row_width, row_height = get_target_pixel_dimensions(lat,lons[0])
     
     offset = int(offset*float(row_width)/target_width)
     
+    placholders = [True,True,True]
 
-    for i in range (len(patches)):
-        lat, lon = patches[i]
+    for col, lon in enumerate(lons):
 
         file_name,folder_name = get_file_paths(lat,lon)
 
         path = os.path.join(path_to_dataset, folder_name, file_name)
         
-        image  = get_current_image(path, (i, row), offset, row_width, row_height)
-            
+        image, is_placeholder  = get_current_image(path, (col, row), offset, row_width, row_height)
+        placholders[col] = is_placeholder
     
         if image_row is None: image_row = image
         else: image_row = np.concatenate((image_row, image), axis = 1)
             
-    return image_row
+    return image_row, placholders
     
 def scale_row(row, target_width=None):
 
@@ -235,18 +167,14 @@ def get_image(path_to_dataset, latitude,longitude, offset=0):
     if not os.path.exists(path): return None
 
     print('\nProcess ' + file_name)
-    patch_list = get_neighbours(latitude,longitude)
+    lats,lons = get_neighbours(latitude,longitude)
 
     target_width, target_height = get_target_pixel_dimensions(latitude,longitude)
-    
-    top_latitude = patch_list[0][0]
-    middle_latitude = patch_list[3][0]
-    bottom_latitude = patch_list[6][0]
 
     #Get rows
-    middle_row = get_row(path_to_dataset,1,offset,target_width,[patch_list[3],patch_list[4],patch_list[5]])
-    top_row = get_row(path_to_dataset,0,offset,target_width,[patch_list[0],patch_list[1],patch_list[2]])
-    bottom_row = get_row(path_to_dataset,2,offset,target_width,[patch_list[6],patch_list[7],patch_list[8]])
+    middle_row, middle_placeholders = get_row(path_to_dataset,1,offset,target_width,lons,lats[1])
+    top_row, top_placeholders = get_row(path_to_dataset,0,offset,target_width,lons,lats[0])
+    bottom_row, bottom_placeholders = get_row(path_to_dataset,2,offset,target_width,lons,lats[2])
     
     #Normalize images
     max_height = np.max([np.max(middle_row),np.max(top_row),np.max(bottom_row)])
@@ -272,5 +200,6 @@ def get_image(path_to_dataset, latitude,longitude, offset=0):
     image.paste(middle_row_image, (0, top_margin))
     image.paste(bottom_row_image, (0, top_margin + image_height))
 
+    placeholders = [top_placeholders,middle_placeholders,bottom_placeholders]
 
-    return image, min_height, max_height
+    return image, min_height, max_height, placeholders

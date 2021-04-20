@@ -61,51 +61,42 @@ def string_to_position(str):
     
     return lat, lon
     
+def get_file_paths(latitude,longitude):
+
+    lat_str = stringify_latitude(latitude)
+    lon_str = stringify_longitude(longitude)
+
+    file_name = 'ALPSMLC30_'+lat_str+lon_str+'_DSM.tif'
+    
+    floor_lat = int(latitude/5)*5
+    floor_lon = int(longitude/5)*5
+    
+    if latitude < 0:
+        lat_to = floor_lat - 5
+        first_lat = stringify_latitude(lat_to)
+        second_lat = stringify_latitude(floor_lat)
+    else:
+        lat_to = floor_lat + 5
+        first_lat = stringify_latitude(floor_lat)
+        second_lat = stringify_latitude(lat_to)
+    
+    
+    if longitude < 0:
+        lon_to = floor_lon - 5
+        first_lon = stringify_longitude(lon_to)
+        second_lon = stringify_longitude(floor_lon)
+    else:
+        lon_to = floor_lon + 5
+        first_lon = stringify_longitude(floor_lon)
+        second_lon = stringify_longitude(lon_to)
+    
+    folder_name = first_lat+first_lon + '_' + second_lat +second_lon
+    
+    return file_name, folder_name
+    
 def get_bounds(latitude, longitude):
     right_longitude = (((longitude+180)+1)%360)-180
     return (longitude, latitude, right_longitude, latitude+1)
-    
-'''def get_patch_dimensions(latitude):
-    
-    #latitude distance
-    
-    lat_distance = 111.0
-    
-    #longitude distance
-    
-    lat = radians(latitude)
-    
-    dlon = radians(0.5)
-
-    a = sin(0 / 2)**2 + cos(lat)**2 * sin(dlon)**2
-    c = 2 * atan2(sqrt(a), sqrt(1 - a))
-
-    lon_distance = 6373.0 * c
-    
-    return lat_distance, lon_distance
-    
-
-def calculate_distance(first_point,second_point):
-    
-    lat1 = radians(first_point[0])
-    lon1 = radians(first_point[1])
-    
-    lat2 = radians(second_point[0])
-    lon2 = radians(second_point[1])
-
-    # approximate radius of earth in km
-    R = 6373.0
-
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    
-
-    a = sin(dlat / 2)**2 + cos(lat1) * cos(lat2) * sin(dlon / 2)**2
-    c = 2 * atan2(sqrt(a), sqrt(1 - a))
-
-    distance = R * c
-    
-    return distance'''
 
 def pixel_to_coordinates(latitude,longitude, points):
 
