@@ -4,21 +4,22 @@ import numpy as np
 from math import sqrt
 import random
 import os
-from utilities import stringify_latitude, stringify_longitude, string_to_position, pixel_to_coordinates, km_to_pixel
+from utilities import stringify_latitude, stringify_longitude, string_to_position
+from utilities import pixel_to_coordinates, km_to_pixel
 from uniform_density import Field, halton
 import time
+import argparse
 
-PATH_TO_DATASET = '/Volumes/Extreme SSD/Datasets/Terrain/'
 DEBUG = True
 
 
-def sample_random_points(latitude, longitude, amount_samples, edge_length, output_dir=None,output_size=None):
+def sample_random_points(latitude, longitude,path_prefix, amount_samples, edge_length, output_dir=None,output_size=None):
         
     #Calculate meters to pixel
     edge_length_pixel = km_to_pixel(latitude,longitude, edge_length)
     
     #TODO cache image
-    result = get_image(PATH_TO_DATASET, latitude, longitude, edge_length_pixel)
+    result = get_image(path_prefix, latitude, longitude, edge_length_pixel)
     if result is None: return None
     
     image, min_height, max_height = result
@@ -159,8 +160,31 @@ def run_sampler(output_size,output_dir,samples_per_patch, sample_edge_length):
         print(output_info)
     
 #run_sampler(output_size=256,output_dir='../samples', samples_per_patch=150, sample_edge_length=10)
-data = sample_random_points(45, 8, 150, 10, output_dir='../samples',output_size=256)
-if data is not None: show_debug_draw(*data)
+
+# Initiate the parser
+parser = argparse.ArgumentParser()
+
+# Add long and short argument
+parser.add_argument("input_dir")
+parser.add_argument("edge_length",type=float)
+parser.add_argument("amount_samples", type=int)
+parser.add_argument("--debug", "-d", help="run in debug mode", default=False, type=bool)
+parser.add_argument("--size", "-s", help="set the output size", default=None, type=int)
+parser.add_argument("--output", "-o", help="set the output directory path", default="../output")
+
+# Read arguments from the command line
+args = parser.parse_args()
+
+input_dir = args.input_dir
+edge_length = args.edge_length
+amount_samples = args.amount_samples
+
+output_dir = args.output
+output_size = args.size
+DEBUG = args.debug
+
+data = sample_random_points(45, 8, input_dir,amount_samples, edge_length, output_dir=output_dir,output_size=output_size)
+if data is not None and DEBUG: show_debug_draw(*data)
 else: print("No data")
     
     

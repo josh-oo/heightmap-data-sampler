@@ -1,18 +1,63 @@
 #!/bin/bash
 
-DIR="env/bin/activate"
+#Arguments
 
+DIR="env/bin/activate"
+INPUT=$1; shift;
+EDGE_LENGTH=$1; shift;
+AMOUNT_SAMPLES=$1; shift;
+
+while [[ "$#" -gt 0 ]]; do
+	case $1 in
+		#-i|--input) INPUT="$2"; shift ;;
+		#-e|--edge) EDGE_LENGTH="$2"; shift ;;
+        #-a|--amount) AMOUNT_SAMPLES=$2; shift ;;
+        -o|--output) OUTPUT="-o "$2""; shift ;;
+        -s|--size) OUTPUT_SIZE="-s $2"; shift ;;
+        -d|--debug) DEBUG="-d true" ;;
+		*) echo "Unknown parameter passed: $1"; exit 1 ;;
+	esac
+	shift
+done
+
+echo $INPUT
+#Check arguments
+if [ -z "$INPUT" ]
+then
+	echo "No input directory specified"
+	exit 1
+fi
+
+if [ -z "$EDGE_LENGTH" ]
+then
+    echo "No patch size specified"
+    exit 1
+fi
+
+if [ -z "$AMOUNT_SAMPLES" ]
+then
+    echo "No sample amount specified"
+    exit 1
+fi
+
+echo "Sample patches of size $EDGE_LENGTH km from $INPUT and save it to $OUTPUT"
+
+#Check if environment allready exists
 if [ -f "$DIR" ] 
 then
-	echo "Activate" $DIR
+	echo "Activate $DIR"
 	source $DIR
 else
 	echo "Make venv"
 	python3 -m venv env
-	echo "Activate" $DIR
+	echo "Activate $DIR"
 	source $DIR
 	echo "Install requirements"
 	pip install -r requirements.txt
 fi
 
-python3 python/random_sampler.py
+#echo $OUTPUT
+
+python3 python/random_sampler.py "$INPUT" $EDGE_LENGTH $AMOUNT_SAMPLES $OUTPUT $OUTPUT_SIZE $DEBUG
+
+deactivate
